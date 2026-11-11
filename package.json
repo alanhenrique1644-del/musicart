@@ -10,7 +10,6 @@
     "preview:html": "npm run build && node scripts/preview.mjs"
   },
   "dependencies": {
-    "@emotion/is-prop-valid": "^1.4.0",
     "lucide-react": "^0.468.0",
     "motion": "^12.23.0",
     "react": "^19.1.0",

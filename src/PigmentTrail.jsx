@@ -1,22 +1,29 @@
 import { useEffect, useRef } from 'react'
 
 const lifetime = 1500
-const pigments = ['#ff374e', '#9b44ed', '#d747bb', '#ff475f', '#7345ff']
+const reds = ['#f82f49', '#ff4a53', '#e63360']
+const purples = ['#873cf0', '#a943df', '#752ae0']
+
+function fade(age) {
+  return Math.max(0, 1 - age) ** 1.55
+}
 
 export default function PigmentTrail() {
   const canvasRef = useRef(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)')
-    if (!context || reduced.matches) return
+    const ctx = canvas.getContext('2d')
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
+    if (!ctx || reducedMotion.matches) return
 
-    let width = 0
-    let height = 0
-    let previous
+    let width, height, previous
     let frame = 0
-    let marks = []
+    let distanceTravelled = 0
+    let stroke = 0
+    let points = []
+    let drops = []
+    let splashes = []
 
     function resize() {
       width = window.innerWidth
@@ -24,41 +31,93 @@ export default function PigmentTrail() {
       const ratio = Math.min(window.devicePixelRatio || 1, 2)
       canvas.width = width * ratio
       canvas.height = height * ratio
-      context.setTransform(ratio, 0, 0, ratio, 0, 0)
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0)
+    }
+
+    function oval(x, y, radius, aspect, angle, color, opacity) {
+      ctx.globalAlpha = opacity
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.ellipse(x, y, radius, radius * aspect, angle, 0, 2 * Math.PI)
+      ctx.fill()
+    }
+
+    function ribbon(a, b, left, right, color, opacity) {
+      const aw = a.width
+      const bw = b.width
+      ctx.globalAlpha = opacity
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.moveTo(a.x + a.nx * aw * left, a.y + a.ny * aw * left)
+      ctx.lineTo(b.x + b.nx * bw * left, b.y + b.ny * bw * left)
+      ctx.lineTo(b.x + b.nx * bw * right, b.y + b.ny * bw * right)
+      ctx.lineTo(a.x + a.nx * aw * right, a.y + a.ny * aw * right)
+      ctx.closePath()
+      ctx.fill()
     }
 
     function paint(now) {
-      context.clearRect(0, 0, width, height)
-      marks = marks.filter(mark => now - mark.time < lifetime)
-      for (const mark of marks) {
-        const age = Math.max(0, (now - mark.time) / lifetime)
-        const fade = (1 - age) ** 1.45
-        const spread = 1 - (1 - Math.min(1, age * 6)) ** 3
-        context.globalAlpha = fade * mark.opacity
-        context.fillStyle = mark.color
-        context.beginPath()
-        context.ellipse(
-          mark.x + mark.vx * spread,
-          mark.y + mark.vy * spread,
-          Math.max(0.1, mark.radius * (0.4 + 0.6 * fade)),
-          Math.max(0.1, mark.radius * mark.aspect * (0.4 + 0.6 * fade)),
-          mark.angle,
-          0,
-          Math.PI * 2,
-        )
-        context.fill()
+      ctx.clearRect(0, 0, width, height)
+      points = points.filter(point => now - point.time < lifetime)
+      drops = drops.filter(drop => now - drop.time < lifetime)
+      splashes = splashes.filter(splash => now - splash.time < lifetime)
+
+      let tail
+      for (const point of points) {
+        const opacity = fade((now - point.time) / lifetime)
+        const tip = { ...point, width: point.width * (0.27 + 0.73 * opacity) }
+        const red = reds[point.shade]
+        const purple = purples[point.shade]
+        if (tail?.stroke === tip.stroke) {
+          ribbon(tail, tip, 0.97, -0.77, purple, 0.92 * opacity)
+          ribbon(tail, tip, 0.88, -0.2, red, 0.96 * opacity)
+          ribbon(tail, tip, -0.22, -0.45, '#e471d6', 0.43 * opacity)
+        }
+        oval(tip.x, tip.y, tip.width * 0.57, 0.75, tip.angle, purple, 0.47 * opacity)
+        tail = tip
       }
-      frame = marks.length ? requestAnimationFrame(paint) : 0
+
+      for (const splash of splashes) {
+        const age = Math.max(0, (now - splash.time) / lifetime)
+        const opacity = fade(age)
+        const bloom = 0.32 + 0.68 * (1 - (1 - Math.min(1, age * 7)) ** 3)
+        for (const ray of splash.rays) {
+          const distance = ray.length * bloom * (0.56 + 0.44 * opacity)
+          const w = ray.width * (0.28 + 0.72 * opacity)
+          ctx.save()
+          ctx.translate(splash.x, splash.y)
+          ctx.rotate(ray.angle)
+          ctx.globalAlpha = opacity
+          ctx.fillStyle = ray.color
+          ctx.beginPath()
+          ctx.moveTo(-w * 0.45, -w * 0.55)
+          ctx.bezierCurveTo(distance * 0.32, -w * 1.25, distance * 0.54, w * 0.3, distance, w * 0.07)
+          ctx.bezierCurveTo(distance * 0.56, w * 0.31, distance * 0.28, w * 0.86, -w * 0.36, w * 0.54)
+          ctx.closePath()
+          ctx.fill()
+          ctx.restore()
+        }
+        oval(splash.x, splash.y, 9 * (0.45 + 0.55 * opacity), 0.82, 0.34, '#e83569', opacity)
+      }
+
+      for (const drop of drops) {
+        const age = Math.max(0, (now - drop.time) / lifetime)
+        const opacity = fade(age)
+        const spread = 1 - (1 - Math.min(1, age * 6)) ** 3
+        oval(drop.x + drop.vx * spread, drop.y + drop.vy * spread, drop.radius * (0.27 + 0.73 * opacity),
+          drop.aspect, drop.angle, drop.color, 0.88 * opacity)
+      }
+      ctx.globalAlpha = 1
+      frame = points.length || drops.length || splashes.length ? requestAnimationFrame(paint) : 0
     }
 
-    function blot(x, y, radius, time, index, vx = 0, vy = 0) {
-      marks.push({
-        x, y, radius, time, vx, vy,
-        color: pigments[index % pigments.length],
-        opacity: vx || vy ? 0.86 : 0.57,
-        angle: Math.atan2(vy, vx) || Math.random() * Math.PI,
-        aspect: 0.5 + Math.random() * 0.45,
-      })
+    function wake() {
+      if (!frame) frame = requestAnimationFrame(paint)
+    }
+
+    function makeDrop(x, y, time, angle, length, radius, color) {
+      drops.push({ x, y, time, angle, vx: Math.cos(angle) * length, vy: Math.sin(angle) * length,
+        radius, color, aspect: 0.42 + Math.random() * 0.54 })
     }
 
     function move(event) {
@@ -67,44 +126,72 @@ export default function PigmentTrail() {
       const y = event.clientY
       const time = performance.now()
 
-      if (previous && time - previous.time < 100) {
-        const distance = Math.hypot(x - previous.x, y - previous.y)
-        const steps = Math.min(25, Math.ceil(distance / 4))
-        for (let i = 1; i <= steps; i++) {
-          const ratio = i / steps
-          const px = previous.x + (x - previous.x) * ratio
-          const py = previous.y + (y - previous.y) * ratio
-          const ink = Math.floor(time / 140)
-          blot(px, py, 2 + Math.min(distance, 48) / 15 + Math.random() * 1.2, time, ink)
-          if (Math.random() < 0.18) blot(px, py, 0.6 + Math.random() * 1.8, time, ink + 1, (Math.random() - 0.5) * 21, (Math.random() - 0.5) * 21)
+      if (previous && time - previous.time < 110) {
+        const dx = x - previous.x
+        const dy = y - previous.y
+        const distance = Math.hypot(dx, dy)
+        if (distance > 0) {
+          const angle = Math.atan2(dy, dx)
+          const speed = distance / Math.max(8, time - previous.time)
+          const count = Math.min(48, Math.ceil(distance / 3.6))
+          for (let i = 0; i <= count; i++) {
+            const t = i / count
+            const px = previous.x + dx * t
+            const py = previous.y + dy * t
+            distanceTravelled += distance / (count + 1)
+            const wave = Math.sin(distanceTravelled / 20)
+            const shade = Math.floor(distanceTravelled / 29) % reds.length
+            points.push({ x: px, y: py, time: previous.time + (time - previous.time) * t, angle, stroke,
+              nx: -dy / distance, ny: dx / distance, shade,
+              width: Math.max(2.7, 4.9 + Math.min(3.5, speed * 0.75) + wave * 2 + Math.random() * 0.9) })
+            if (i > 0 && Math.random() < 0.15) {
+              makeDrop(px, py, time, angle + (Math.random() < 0.5 ? -1 : 1) * 1.6,
+                5 + Math.random() * 19, 1 + Math.random() * 2.2, i % 2 ? reds[shade] : purples[shade])
+            }
+          }
+          wake()
         }
+      } else {
+        stroke++
       }
       previous = { x, y, time }
-      if (!frame && marks.length) frame = requestAnimationFrame(paint)
     }
 
     function splash(event) {
       if (event.button !== 0) return
+      const x = event.clientX
+      const y = event.clientY
       const time = performance.now()
-      blot(event.clientX, event.clientY, 10, time, 0)
-      for (let i = 0; i < 37; i++) {
-        const angle = Math.random() * Math.PI * 2
-        const distance = 11 + Math.random() ** 1.6 * 88
-        blot(event.clientX, event.clientY, 1 + Math.random() ** 2 * 6, time, i, Math.cos(angle) * distance, Math.sin(angle) * distance)
+      const offset = Math.random() * Math.PI
+      const rays = Array.from({ length: 10 }, (_, index) => ({
+        angle: offset + (index + Math.random() * 0.55) * Math.PI / 5,
+        width: 4 + Math.random() * 10,
+        length: 17 + Math.random() * 48,
+        color: index % 2 ? reds[index % 3] : purples[index % 3],
+      }))
+      splashes.push({ x, y, time, rays })
+      for (let i = 0; i < 32; i++) {
+        const ray = rays[i % rays.length]
+        makeDrop(x, y, time, ray.angle + (Math.random() - 0.5) * 0.76,
+          17 + Math.random() ** 1.45 * 87, 1 + Math.random() ** 1.75 * 4.8, ray.color)
       }
-      if (!frame) frame = requestAnimationFrame(paint)
+      wake()
     }
+
+    function breakStroke() { previous = undefined }
 
     resize()
     window.addEventListener('resize', resize)
     window.addEventListener('pointermove', move, { passive: true })
     window.addEventListener('pointerdown', splash, { passive: true })
+    window.addEventListener('blur', breakStroke)
     return () => {
       window.removeEventListener('resize', resize)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerdown', splash)
+      window.removeEventListener('blur', breakStroke)
       cancelAnimationFrame(frame)
-      context.clearRect(0, 0, width, height)
+      ctx.clearRect(0, 0, width, height)
     }
   }, [])
 

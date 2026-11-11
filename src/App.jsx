@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, AudioLines, ChevronDown, ChevronRight,
+  ArrowLeft, ArrowRight, ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight,
   Disc3, Headphones, Heart, LibraryBig, ListMusic, ListPlus, Music2, Pause, Pencil, Play,
-  Plus, Repeat2, Search, Shuffle, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X,
+  Plus, Repeat2, Search, Shuffle, SkipBack, SkipForward, Volume2, VolumeX, X,
 } from 'lucide-react'
 import BlurText from './components/BlurText/BlurText'
 import GridMotion from './components/GridMotion/GridMotion'
@@ -12,6 +12,7 @@ import OptionWheel from './components/OptionWheel/OptionWheel'
 import BounceCards from './components/BounceCards/BounceCards'
 import AlbumRail, { AlbumRailContext } from './AlbumRail'
 import PigmentTrail from './PigmentTrail'
+import Paint from './Paint'
 import { usePlayer } from './player'
 import catalog from './catalog.json'
 
@@ -19,7 +20,8 @@ const byId = new Map(catalog.map(track => [track.id, track]))
 const artists = [...new Map([...catalog].reverse().map(track => [track.artistId, track])).values()].reverse()
 const featured = catalog.slice(0, 4)
 const gridCovers = Array.from({ length: 28 }, (_, index) => catalog[(index * 5 + Math.floor(index / 7)) % catalog.length].cover)
-const genres = ['Todos os gêneros', 'Rock nacional', 'MPB', 'Hip-hop', 'Indie']
+const genres = ['Todos os gêneros', ...new Set(catalog.map(track => track.genre))]
+const groups = Array.from({ length: Math.ceil(catalog.length / 4) }, (_, index) => catalog.slice(index * 4, index * 4 + 4))
 const initialLists = [
   { id: 'noite', name: 'Noite em cores', color: 'violet', tracks: ['see-you-again', 'lovers-rock', 'blue-hair'] },
   { id: 'tintas', name: 'Entre tintas', color: 'coral', tracks: ['lanca-perfume', 'trevo', 'so-os-loucos'] },
@@ -86,10 +88,10 @@ function TrackCard({ track, playing, onPlay }) {
   )
 }
 
-function SectionHeading({ number, tag, title, children }) {
+function SectionHeading({ title, children }) {
   return (
     <div className="section-heading">
-      <div><p className="eyebrow"><span>{number}</span> / {tag}</p><h2>{title}</h2></div>
+      <h2>{title}</h2>
       {children}
     </div>
   )
@@ -103,22 +105,21 @@ function Hero({ player }) {
       <div className="hero-grid" aria-hidden="true">
         <GridMotion items={gridCovers} rows={4} angle={-15} aspectRatio={1} gap={9} radius={3} speed={11} fade={0.26} dim={0.43} />
       </div>
+      <Paint className="hero-paint" />
       <div className="hero-wash" aria-hidden="true" />
       <div className="hero-grain" aria-hidden="true" />
       <div className="hero-copy">
-        <p className="hero-kicker"><span /><span>GALERIA SONORA</span><i /> VOL. 01</p>
-        <div className="hero-title" id="hero-title" role="heading" aria-level="1" aria-label="A arte de ouvir.">
+        <div className="hero-title" id="hero-title" role="heading" aria-level="1" aria-label="A arte de ouvir">
           <div aria-hidden="true"><BlurText text="A arte de" delay={90} distance={20} stepDuration={0.28} trigger="mount" /></div>
-          <div className="hero-accent" aria-hidden="true"><BlurText text="ouvir." delay={140} distance={20} stepDuration={0.34} trigger="mount" /></div>
+          <div className="hero-accent" aria-hidden="true"><BlurText text="ouvir" delay={140} distance={20} stepDuration={0.34} trigger="mount" /></div>
         </div>
-        <p className="hero-intro">Explore músicas do seu jeito, entre cores, capas e sons que merecem ser descobertos.</p>
+        <p className="hero-intro">Explore artistas, ouça suas faixas favoritas e monte playlists do seu jeito.</p>
         <div className="hero-actions">
           <a className="button button-primary" href="#explorar">Explorar músicas <ArrowUpRight size={17} /></a>
-          <a className="hero-player-link" href="#tocando"><Headphones size={16} /> Ir para o player</a>
+          <a className="hero-player-link" href="#tocando"><Headphones size={16} /> Abrir toca-discos</a>
         </div>
       </div>
       <div className="hero-display">
-        <span className="hero-display-index" aria-hidden="true">MA–001</span>
         <div className="hero-back-cover" aria-hidden="true"><img src={featured[3].cover} alt="" /></div>
         <div className={`hero-record record ${playing ? 'spinning' : ''}`} aria-hidden="true">
           <div className="record-center"><img src={track.cover} alt="" /><i /></div>
@@ -128,10 +129,7 @@ function Hero({ player }) {
           <img src={track.cover} alt="Capa do álbum Flower Boy" />
           <span className="hero-cover-play">{playing ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}</span>
         </button>
-        <div className="hero-stamp" aria-hidden="true"><Sparkles size={17} /><span>SOM EM<br />EXPOSIÇÃO</span></div>
-        <div className="hero-art-caption" aria-hidden="true"><span /> FLOWER BOY / TYLER, THE CREATOR</div>
       </div>
-      <div className="hero-bottom-note" aria-hidden="true"><span>01</span> / UMA GALERIA PARA OS OUVIDOS</div>
     </section>
   )
 }
@@ -171,33 +169,51 @@ function AppleLink({ track }) {
 function NowPlaying({ player, favorite, onFavorite, onAdd }) {
   const { track, playing } = player
   return (
-    <section className="section now-section" id="tocando">
-      <SectionHeading number="05" tag="SALA DE ESCUTA" title="No toca-discos">
-        <span className="section-chip"><AudioLines size={15} /> {playing ? 'Em reprodução' : 'Player de trechos'}</span>
-      </SectionHeading>
+    <main className="main-content player-page" id="tocando">
+      <div className="player-page-heading">
+        <h1>Toca-discos</h1>
+        <a className="text-link" href="#inicio"><ArrowLeft size={17} /> Voltar ao início</a>
+      </div>
       <div className="listening-room" style={{ '--art-color': track.color }}>
+        <Paint className="room-paint" />
         <AlbumRailContext.Provider value={{ tracks: catalog, track, playing, select: item => player.select(item, catalog), previous: () => player.step(-1), next: () => player.step(1) }}>
           <AlbumRail />
         </AlbumRailContext.Provider>
         <div className="player-info">
-          <p className="eyebrow">{track.genre} <span> / </span> {track.year}</p>
-          <h3>{track.title}</h3>
+          <h2>{track.title}</h2>
           <p>{track.artist}{normalize(track.artist) !== normalize(track.album) && <> <span>·</span> {track.album}</>}</p>
         </div>
         <div className="full-transport"><Progress player={player} suffix="no toca-discos" /><Transport player={player} /></div>
         <div className="player-links">
           <IconButton label={favorite ? 'Remover dos favoritos' : 'Favoritar faixa'} aria-pressed={favorite} onClick={onFavorite}><Heart size={19} fill={favorite ? 'currentColor' : 'none'} /></IconButton>
-          <AppleLink track={track} />
           <IconButton label="Adicionar a uma playlist" onClick={onAdd}><ListPlus size={20} /></IconButton>
+          <VolumeControl player={player} />
         </div>
-        <p className="preview-credit">Prévia fornecida pelo Apple Music</p>
+        {player.issue && <p className="room-error" role="status">{player.issue}</p>}
+        <div className="room-credit">
+          <AppleLink track={track} />
+          <p className="preview-credit">Prévia do Apple Music</p>
+        </div>
       </div>
-    </section>
+    </main>
+  )
+}
+
+function VolumeControl({ player }) {
+  const { volume } = player
+  return (
+    <div className="volume-control">
+      <IconButton label={volume ? 'Silenciar' : 'Ativar som'} onClick={() => player.changeVolume(volume ? 0 : 0.65)}>
+        {volume ? <Volume2 size={18} /> : <VolumeX size={18} />}
+      </IconButton>
+      <input aria-label="Volume" type="range" min="0" max="1" step="0.01" value={volume} className="range volume-slider"
+        style={{ '--fill': volume * 100 + '%' }} onChange={event => player.changeVolume(Number(event.target.value))} />
+    </div>
   )
 }
 
 function MiniPlayer({ player, favorite, onFavorite, onAdd }) {
-  const { track, volume, issue } = player
+  const { track, issue } = player
   return (
     <div className="mini-player">
       {issue && <div className="player-error" role="status">{issue} <AppleLink track={track} /></div>}
@@ -209,61 +225,59 @@ function MiniPlayer({ player, favorite, onFavorite, onAdd }) {
       <div className="mini-controls"><Transport player={player} secondary /><Progress player={player} suffix="no mini player" /></div>
       <div className="mini-actions">
         <IconButton className="mini-add" label="Adicionar a uma playlist" onClick={onAdd}><ListPlus size={19} /></IconButton>
-        <IconButton className="volume-button" label={volume ? 'Silenciar' : 'Ativar som'} onClick={() => player.changeVolume(volume ? 0 : 0.65)}>
-          {volume ? <Volume2 size={18} /> : <VolumeX size={18} />}
-        </IconButton>
-        <input aria-label="Volume" type="range" min="0" max="1" step="0.01" value={volume} className="range volume-slider"
-          style={{ '--fill': `${volume * 100}%` }} onChange={event => player.changeVolume(Number(event.target.value))} />
+        <VolumeControl player={player} />
       </div>
     </div>
   )
 }
 
 function Library({ name, lists, favorites, onSelect, onNew, onProfile, mobileOpen, onClose }) {
-  const [expanded, setExpanded] = useState('')
+  const [expanded, setExpanded] = useState(lists[0]?.id ?? '')
   const rows = [{ id: 'favorites', name: 'Favoritas', color: 'lime', tracks: favorites }, ...lists]
   const initials = name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase()
 
   return (
     <aside className={`library ${mobileOpen ? 'library-open' : ''}`} aria-label="Perfil e playlists pessoais">
-      <div className="library-caption"><span><LibraryBig size={17} /> MEU ESPAÇO</span><IconButton className="library-close" label="Fechar biblioteca" onClick={onClose}><X size={18} /></IconButton><span className="library-dot" /></div>
+      <IconButton className="library-close" label="Fechar biblioteca" onClick={onClose}><X size={20} /></IconButton>
       <div className="profile-card">
-        <div className="profile-art" aria-hidden="true"><i /><i /><i /></div>
+        <div className="profile-art" aria-hidden="true"><Paint className="profile-paint" /></div>
         <div className="profile-details">
           <button type="button" onClick={onProfile} className="profile-avatar" aria-label="Editar perfil">{initials}</button>
-          <div><h2>{name}</h2><p>Perfil local</p></div>
-          <IconButton label="Editar nome do perfil" onClick={onProfile}><Pencil size={14} /></IconButton>
+          <h2>{name}</h2>
+          <IconButton label="Editar nome do perfil" onClick={onProfile}><Pencil size={16} /></IconButton>
         </div>
       </div>
       <div className="library-section">
-        <div className="library-title"><div><p className="eyebrow">SUA COLEÇÃO</p><h2>Playlists</h2></div>
-          <IconButton label="Nova playlist" className="library-plus" onClick={onNew}><Plus size={20} /></IconButton>
-        </div>
+        <div className="library-title"><h2>Playlists</h2></div>
         <div className="library-lists">
           {rows.map(row => {
             const tracks = row.tracks.map(id => byId.get(id)).filter(Boolean)
             const isOpen = expanded === row.id
+            const isFavorite = row.id === 'favorites'
             return (
               <div className={`playlist-item ${isOpen ? 'playlist-open' : ''}`} key={row.id}>
                 <button type="button" className="playlist-row" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? '' : row.id)}>
-                  <span className={`playlist-art ${row.color}`}>{row.id === 'favorites' ? <Heart size={18} /> : <ListMusic size={19} />}</span>
+                  <span className={`playlist-art ${row.color}`}>
+                    {isFavorite ? <Heart size={21} /> : tracks.length ? <img src={tracks[0].cover} alt="" /> : <ListMusic size={22} />}
+                  </span>
                   <span className="playlist-name"><strong>{row.name}</strong><small>{tracks.length} {tracks.length === 1 ? 'faixa' : 'faixas'}</small></span>
-                  {isOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                  {isOpen ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
                 </button>
                 {isOpen && (
                   <div className="playlist-tracks">
                     {tracks.length ? tracks.map(track => (
-                      <button type="button" key={track.id} onClick={() => { onSelect(track, tracks); onClose() }}><Play size={13} /><span>{track.title}</span></button>
-                    )) : <p>{row.id === 'favorites' ? 'Marque o coração no player para guardar suas faixas.' : 'Adicione músicas pelo botão de playlist no player.'}</p>}
+                      <button type="button" key={track.id} onClick={() => { onSelect(track, tracks); onClose() }}>
+                        <img src={track.cover} alt="" /><span><strong>{track.title}</strong><small>{track.artist}</small></span><Play size={14} />
+                      </button>
+                    )) : <p>{isFavorite ? 'Use o coração no player para guardar suas faixas.' : 'Adicione faixas pelo player.'}</p>}
                   </div>
                 )}
               </div>
             )
           })}
         </div>
-        <button type="button" className="new-playlist" onClick={onNew}><Plus size={16} /> Criar playlist</button>
+        <button type="button" className="new-playlist" onClick={onNew}><Plus size={17} /> Criar playlist</button>
       </div>
-      <div className="library-foot"><Disc3 size={17} /><span>SALVO NESTE DISPOSITIVO</span></div>
     </aside>
   )
 }
@@ -279,13 +293,13 @@ function SearchDialog({ onClose, onTrack, onArtist }) {
     <Modal title="Buscar na galeria" onClose={onClose} className="search-modal">
       <label className="modal-search"><Search size={19} /><input autoFocus placeholder="Música, artista ou álbum" value={query} onChange={event => setQuery(event.target.value)} aria-label="Música, artista ou álbum" /></label>
       <div className="search-results">
-        {matchedArtists.length > 0 && <p className="eyebrow">ARTISTAS</p>}
+        {matchedArtists.length > 0 && <p className="result-label">Artistas</p>}
         {matchedArtists.map(artist => (
           <button type="button" className="search-result" key={artist.artistId} onClick={() => onArtist(artist.artistId)}>
             <img src={artist.cover} alt="" /><span><strong>{artist.artist}</strong><small>Artista · {artist.genre}</small></span><ArrowUpRight size={17} />
           </button>
         ))}
-        {matchedTracks.length > 0 && <p className="eyebrow">{term ? 'FAIXAS' : 'EM DESTAQUE'}</p>}
+        {matchedTracks.length > 0 && <p className="result-label">{term ? 'Faixas' : 'Em destaque'}</p>}
         {matchedTracks.map(track => (
           <button type="button" className="search-result" key={track.id} onClick={() => onTrack(track)}>
             <img src={track.cover} alt="" /><span><strong>{track.title}</strong><small>{track.artist} · {track.album}</small></span><Play size={17} />
@@ -294,6 +308,47 @@ function SearchDialog({ onClose, onTrack, onArtist }) {
         {!matchedArtists.length && !matchedTracks.length && <p className="empty-copy">Nenhum resultado para “{query.trim()}”.</p>}
       </div>
     </Modal>
+  )
+}
+
+function ArtistStrip({ selected, onSelect }) {
+  const strip = useRef(null)
+  const [edges, setEdges] = useState({ start: true, end: false })
+
+  useEffect(() => {
+    const element = strip.current
+    function updateEdges() {
+      const start = element.scrollLeft <= 1
+      const end = element.scrollLeft + element.clientWidth >= element.scrollWidth - 2
+      setEdges(previous => previous.start === start && previous.end === end ? previous : { start, end })
+    }
+    const observer = new ResizeObserver(updateEdges)
+    observer.observe(element)
+    element.addEventListener('scroll', updateEdges, { passive: true })
+    updateEdges()
+    return () => {
+      observer.disconnect()
+      element.removeEventListener('scroll', updateEdges)
+    }
+  }, [])
+
+  function scroll(direction) {
+    const element = strip.current
+    element.scrollBy({ left: element.clientWidth * 0.72 * direction })
+  }
+
+  return (
+    <div className="artist-scroller">
+      <IconButton label="Rolar artistas para a esquerda" disabled={edges.start} onClick={() => scroll(-1)}><ChevronLeft size={21} /></IconButton>
+      <div className="artist-tabs" ref={strip} aria-label="Escolher artista" tabIndex={0}>
+        {artists.map(item => (
+          <button type="button" key={item.artistId} aria-pressed={selected === item.artistId} onClick={() => onSelect(item.artistId)}>
+            <img src={item.cover} alt="" loading="lazy" /> <span>{item.artist}</span>
+          </button>
+        ))}
+      </div>
+      <IconButton label="Rolar artistas para a direita" disabled={edges.end} onClick={() => scroll(1)}><ChevronRight size={21} /></IconButton>
+    </div>
   )
 }
 
@@ -315,15 +370,13 @@ function ArtistDiscovery({ artistId, setArtist, play }) {
 
   return (
     <section className="section artist-section" id="artistas">
-      <SectionHeading number="02" tag="ARTISTAS" title={artist ? artist.artist : 'Quem dá cor ao som'}>
+      <SectionHeading title={artist ? artist.artist : 'Artistas'}>
         {artist && <button type="button" className="text-link" onClick={() => setArtist('')}><ArrowLeft size={16} /> Ver todos</button>}
       </SectionHeading>
-      <div className="artist-tabs" aria-label="Escolher artista">
-        {artists.map(item => <button type="button" key={item.artistId} aria-pressed={artistId === item.artistId} onClick={() => setArtist(item.artistId)}>{item.artist}</button>)}
-      </div>
+      <ArtistStrip selected={artistId} onSelect={setArtist} />
       {artist ? (
         <div className="artist-selected">
-          <p className="eyebrow">ÁLBUNS NA GALERIA <span> / </span> {albums.length}</p>
+          <h3 className="artist-album-heading">Álbuns</h3>
           <div className="artist-carousel" key={artistId}>
             <CircularCarousel items={albums} preset="cylinder" cardWidth={204} gap={32} autoplay="off" captions
               focusOnClick={false} fadeColor="#18131e" onItemClick={item => {
@@ -351,24 +404,25 @@ function ArtistDiscovery({ artistId, setArtist, play }) {
 
 function GenreDiscovery({ player }) {
   const [genre, setGenre] = useState(genres[0])
-  const tracks = genre === genres[0] ? featured : catalog.filter(track => track.genre === genre)
+  const tracks = genre === genres[0] ? catalog : catalog.filter(track => track.genre === genre)
   return (
     <section className="section" id="generos">
-      <SectionHeading number="03" tag="GÊNEROS" title="Uma paleta de sons" />
+      <SectionHeading title="Gêneros" />
       <div className="genre-panel">
         <div className="genre-picker">
-          <p className="eyebrow">GIRE PARA EXPLORAR <ArrowDown size={14} /></p>
-          <OptionWheel items={genres} defaultSelected={0} onChange={(_, item) => setGenre(item)} fontSize={1.35}
+          <OptionWheel items={genres} defaultSelected={0} onChange={(_, item) => setGenre(item)} fontSize={1.55}
             spacing={1.38} inset={24} blur={0.65} activeColor="#eafa79" textColor="#c3b5c9" />
         </div>
         <div className="genre-tracks">
           <h3>{genre}</h3>
-          {tracks.map(track => (
-            <button type="button" className="genre-track" key={track.id} onClick={() => player.select(track, tracks)}>
-              <img src={track.cover} alt="" /><span><strong>{track.title}</strong><small>{track.artist}</small></span>
-              {player.playing && player.track.id === track.id ? <Pause size={16} /> : <Play size={16} />}
-            </button>
-          ))}
+          <div className="genre-results" tabIndex={0} aria-label={genre}>
+            {tracks.map(track => (
+              <button type="button" className="genre-track" key={track.id} onClick={() => player.select(track, tracks)}>
+                <img src={track.cover} alt="" /><span><strong>{track.title}</strong><small>{track.artist}</small></span>
+                {player.playing && player.track.id === track.id ? <Pause size={16} /> : <Play size={16} />}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -377,14 +431,13 @@ function GenreDiscovery({ player }) {
 
 function TrackDiscovery({ player }) {
   const [stackIndex, setStackIndex] = useState(0)
-  const groups = [catalog.slice(0, 4), catalog.slice(4, 8), catalog.slice(8, 12)]
   const stack = groups[stackIndex]
   return (
     <section className="section" id="faixas">
-      <SectionHeading number="04" tag="FAIXAS" title="Garimpe uma faixa">
+      <SectionHeading title="Faixas">
         <div className="stack-nav">
           <IconButton label="Pilha anterior" onClick={() => setStackIndex((stackIndex + groups.length - 1) % groups.length)}><ArrowLeft size={17} /></IconButton>
-          <span>0{stackIndex + 1} / 0{groups.length}</span>
+          <span>{stackIndex + 1} de {groups.length}</span>
           <IconButton label="Próxima pilha" onClick={() => setStackIndex((stackIndex + 1) % groups.length)}><ArrowRight size={17} /></IconButton>
         </div>
       </SectionHeading>
@@ -396,7 +449,6 @@ function TrackDiscovery({ player }) {
             onCardClick={(index) => { if (stack[index]) player.select(stack[index], stack) }} />
         </div>
         <div className="stack-info">
-          <span className="eyebrow"><Sparkles size={14} /> ESCOLHA UMA CAPA</span>
           {stack.map(track => (
             <button className="stack-track" type="button" key={track.id} onClick={() => player.select(track, stack)}>
               <span><strong>{track.title}</strong><small>{track.artist}</small></span><Play size={14} />
@@ -434,6 +486,18 @@ function App() {
   const [section, setSection] = useState(() => location.hash.slice(1))
   const [toast, setToast] = useState('')
   const favorite = favorites.includes(player.track.id)
+  const playerPage = section === 'tocando'
+  const lastPage = useRef(null)
+
+  useLayoutEffect(() => {
+    const changedPage = lastPage.current !== playerPage
+    lastPage.current = playerPage
+    if (playerPage || !section || section === 'inicio') {
+      window.scrollTo({ top: 0, behavior: changedPage ? 'instant' : 'smooth' })
+    } else if (changedPage) {
+      document.getElementById(section)?.scrollIntoView({ behavior: 'instant' })
+    }
+  }, [section, playerPage])
 
   useEffect(() => {
     function handleKey(event) {
@@ -494,6 +558,7 @@ function App() {
 
   return (
     <>
+      <Paint className="page-paint" />
       <PigmentTrail />
       <audio {...player.audioProps} />
       <div className="app-main">
@@ -502,34 +567,36 @@ function App() {
           <nav className="primary-nav" aria-label="Navegação principal">
             <a className={!section || section === 'inicio' ? 'current' : ''} href="#inicio">Início</a>
             <a className={['explorar', 'artistas', 'generos', 'faixas'].includes(section) ? 'current' : ''} href="#explorar">Explorar</a>
-            <a className={section === 'tocando' ? 'current' : ''} href="#tocando">Tocando</a>
+            <a className={playerPage ? 'current' : ''} aria-current={playerPage ? 'page' : undefined} href="#tocando">Toca-discos</a>
           </nav>
           <button type="button" className="top-search" aria-label="Buscar músicas, artistas ou álbuns" onClick={() => setDialog('search')}>
-            <Search size={18} /><span>Buscar na galeria</span><kbd>/</kbd>
+            <Search size={18} /><span>Buscar músicas</span><kbd>/</kbd>
           </button>
           <IconButton className="mobile-library-button" label="Abrir biblioteca" onClick={() => setLibraryOpen(true)}><LibraryBig size={20} /></IconButton>
         </header>
-        <main className="main-content">
-          <Hero player={player} />
-          <section className="section featured-section" id="explorar">
-            <SectionHeading number="01" tag="CURADORIA" title="Faixas em rotação">
-              <a className="text-link" href="#faixas">Ver todas <ArrowUpRight size={16} /></a>
-            </SectionHeading>
-            <div className="featured-grid">
-              {featured.map(track => <TrackCard key={track.id} track={track} playing={player.playing && player.track.id === track.id} onPlay={() => player.select(track, featured)} />)}
-            </div>
-          </section>
-          <ArtistDiscovery artistId={artist} setArtist={setArtist} play={player.select} />
-          <GenreDiscovery player={player} />
-          <TrackDiscovery player={player} />
+        {playerPage ? (
           <NowPlaying player={player} favorite={favorite} onFavorite={toggleFavorite} onAdd={() => setDialog('add')} />
-          <footer className="site-footer"><span><Disc3 size={17} /> MusicArt</span><span>GALERIA SONORA · VOL. 01</span></footer>
-        </main>
+        ) : (
+          <main className="main-content">
+            <Hero player={player} />
+            <section className="section featured-section" id="explorar">
+              <SectionHeading title="Faixas em destaque">
+                <a className="text-link" href="#faixas">Ver todas <ArrowUpRight size={16} /></a>
+              </SectionHeading>
+              <div className="featured-grid">
+                {featured.map(track => <TrackCard key={track.id} track={track} playing={player.playing && player.track.id === track.id} onPlay={() => player.select(track, featured)} />)}
+              </div>
+            </section>
+            <ArtistDiscovery artistId={artist} setArtist={setArtist} play={player.select} />
+            <GenreDiscovery player={player} />
+            <TrackDiscovery player={player} />
+          </main>
+        )}
       </div>
       {libraryOpen && <button className="library-overlay" type="button" onClick={() => setLibraryOpen(false)} aria-label="Fechar biblioteca" />}
       <Library name={name} lists={lists} favorites={favorites} onSelect={player.select} onNew={() => setDialog('new')}
         onProfile={() => setDialog('profile')} mobileOpen={libraryOpen} onClose={() => setLibraryOpen(false)} />
-      <MiniPlayer player={player} favorite={favorite} onFavorite={toggleFavorite} onAdd={() => setDialog('add')} />
+      {!playerPage && <MiniPlayer player={player} favorite={favorite} onFavorite={toggleFavorite} onAdd={() => setDialog('add')} />}
       {dialog === 'search' && <SearchDialog onClose={closeDialog} onArtist={openArtist} onTrack={track => { player.select(track, catalog); closeDialog() }} />}
       {['profile', 'new', 'new-with-track'].includes(dialog) && <NameDialog key={dialog} kind={dialog} name={name} onSave={saveName} onClose={closeDialog} />}
       {dialog === 'add' && (
